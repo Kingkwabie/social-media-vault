@@ -22,15 +22,37 @@ export interface DownloadItem {
 
 interface DownloadContextType {
   downloads: DownloadItem[];
-  startDownload: (url: string, platform: string) => string;
+
+  startDownload: (
+    url: string,
+    platform: string,
+    metadata?: {
+      title?: string;
+      thumbnail?: string;
+      quality?: 'HD' | 'SD';
+      type?: 'video' | 'image';
+    }
+  ) => string;
+
   completeDownload: (id: string, blob: Blob) => Promise<void>;
   getVideoBlob: (id: string) => Promise<Blob | null>;
+
+  updateDownloadInfo: (
+    id: string,
+    metadata: {
+      title?: string;
+      thumbnail?: string;
+      platform?: string;
+    }
+  ) => void;
+
   updateProgress: (id: string, progress: number) => void;
   failDownload: (id: string) => void;
   pauseDownload: (id: string) => void;
   resumeDownload: (id: string) => void;
   cancelDownload: (id: string) => void;
   clearHistory: () => void;
+
   stats: {
     totalDownloaded: number;
     totalSize: string;
@@ -75,6 +97,11 @@ const saveVideoFile = async (id: string, blob: Blob) => {
       db.close();
       reject(transaction.error);
     };
+
+    transaction.onabort = () => {
+      db.close();
+      reject(transaction.error);
+    };
   });
 };
 
@@ -86,8 +113,9 @@ const readVideoFile = async (id: string): Promise<Blob | null> => {
     const request = transaction.objectStore(STORE_NAME).get(id);
 
     request.onsuccess = () => {
+      const result = request.result || null;
       db.close();
-      resolve(request.result || null);
+      resolve(result);
     };
 
     request.onerror = () => {
@@ -117,9 +145,9 @@ const deleteVideoFile = async (id: string) => {
   });
 };
 
-const DownloadContext = createContext<DownloadContextType | undefined>(
-  undefined
-);
+const DownloadContext = createContext<
+  DownloadContextType | undefined
+>(undefined);
 
 export const DownloadProvider: React.FC<{
   children: React.ReactNode;
@@ -135,24 +163,36 @@ export const DownloadProvider: React.FC<{
   });
 
   useEffect(() => {
-    localStorage.setItem('app-downloads', JSON.stringify(downloads));
+    localStorage.setItem(
+      'app-downloads',
+      JSON.stringify(downloads)
+    );
   }, [downloads]);
 
-  const startDownload = (url: string, platform: string) => {
+  const startDownload = (
+    url: string,
+    platform: string,
+    metadata?: {
+      title?: string;
+      thumbnail?: string;
+      quality?: 'HD' | 'SD';
+      type?: 'video' | 'image';
+    }
+  ) => {
     const id = crypto.randomUUID();
 
     const newItem: DownloadItem = {
       id,
-      title: `Video from ${platform}`,
+      title: metadata?.title || `Video from ${platform}`,
       url,
-      thumbnail: '',
+      thumbnail: metadata?.thumbnail || '',
       platform,
-      quality: 'HD',
+      quality: metadata?.quality || 'HD',
       progress: 0,
       status: 'downloading',
       timestamp: Date.now(),
       size: 'Calculating...',
-      type: 'video'
+      type: metadata?.type || 'video'
     };
 
     setDownloads(previous => [newItem, ...previous]);
@@ -160,17 +200,54 @@ export const DownloadProvider: React.FC<{
     return id;
   };
 
-  const updateProgress = (id: string, progress: number) => {
+  const updateDownloadInfo = (
+    id: string,
+    metadata: {
+      title?: string;
+      thumbnail?: string;
+      platform?: string;
+    }
+  ) => {
     setDownloads(previous =>
       previous.map(item =>
         item.id === id
-          ? { ...item, progress: Math.min(99, Math.max(0, progress)) }
+          ? {
+              ...item,
+              ...(metadata.title
+                ? { title: metadata.title }
+                : {}),
+              ...(metadata.thumbnail
+                ? { thumbnail: metadata.thumbnail }
+                : {}),
+              ...(metadata.platform
+                ? { platform: metadata.platform }
+                : {})
+            }
           : item
       )
     );
   };
 
-  const completeDownload = async (id: string, blob: Blob) => {
+  const updateProgress = (
+    id: string,
+    progress: number
+  ) => {
+    setDownloads(previous =>
+      previous.map(item =>
+        item.id === id
+          ? {
+              ...item,
+              progress: Math.min(99, Math.max(0, progress))
+            }
+          : item
+      )
+    );
+  };
+
+  const completeDownload = async (
+    id: string,
+    blob: Blob
+  ) => {
     try {
       if (!blob || blob.size === 0) {
         throw new Error('Downloaded file is empty');
@@ -178,7 +255,9 @@ export const DownloadProvider: React.FC<{
 
       await saveVideoFile(id, blob);
 
-      const size = (blob.size / (1024 * 1024)).toFixed(1);
+      const size = (
+        blob.size / (1024 * 1024)
+      ).toFixed(1);
 
       setDownloads(previous =>
         previous.map(item =>
@@ -194,16 +273,23 @@ export const DownloadProvider: React.FC<{
       );
 
       toast.success('Video saved to Gallery!');
-    } catch {
+
+    } catch (error) {
+      console.error('Saving download failed:', error);
+
       setDownloads(previous =>
         previous.map(item =>
           item.id === id
-            ? { ...item, status: 'failed' }
+            ? {
+                ...item,
+                status: 'failed'
+              }
             : item
         )
       );
 
       toast.error('Could not save video');
+      throw error;
     }
   };
 
@@ -238,7 +324,7 @@ export const DownloadProvider: React.FC<{
   };
 
   const cancelDownload = (id: string) => {
-    deleteVideoFile(id).catch(() => {});
+    deleteVideoFile(id).catch(console.error);
 
     setDownloads(previous =>
       previous.filter(item => item.id !== id)
@@ -247,10 +333,11 @@ export const DownloadProvider: React.FC<{
 
   const clearHistory = () => {
     downloads.forEach(item => {
-      deleteVideoFile(item.id).catch(() => {});
+      deleteVideoFile(item.id).catch(console.error);
     });
 
     setDownloads([]);
+
     toast.success('Download history cleared');
   };
 
@@ -262,7 +349,8 @@ export const DownloadProvider: React.FC<{
     totalSize: downloads
       .filter(item => item.status === 'completed')
       .reduce(
-        (total, item) => total + parseFloat(item.size || '0'),
+        (total, item) =>
+          total + parseFloat(item.size || '0'),
         0
       )
       .toFixed(1) + ' MB',
@@ -277,6 +365,7 @@ export const DownloadProvider: React.FC<{
         startDownload,
         completeDownload,
         getVideoBlob: readVideoFile,
+        updateDownloadInfo,
         updateProgress,
         failDownload,
         pauseDownload,
