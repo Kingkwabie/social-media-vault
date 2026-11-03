@@ -1,4 +1,9 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect
+} from 'react';
 import { toast } from 'sonner';
 
 export interface DownloadItem {
@@ -17,7 +22,11 @@ export interface DownloadItem {
 
 interface DownloadContextType {
   downloads: DownloadItem[];
-  startDownload: (url: string, platform: string) => void;
+  startDownload: (url: string, platform: string) => string;
+  completeDownload: (id: string, blob: Blob) => Promise<void>;
+  getVideoBlob: (id: string) => Promise<Blob | null>;
+  updateProgress: (id: string, progress: number) => void;
+  failDownload: (id: string) => void;
   pauseDownload: (id: string) => void;
   resumeDownload: (id: string) => void;
   cancelDownload: (id: string) => void;
@@ -29,88 +38,254 @@ interface DownloadContextType {
   };
 }
 
-const DownloadContext = createContext<DownloadContextType | undefined>(undefined);
+const DB_NAME = 'SocialMediaVaultDB';
+const STORE_NAME = 'videos';
 
-export const DownloadProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const openDatabase = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+const saveVideoFile = async (id: string, blob: Blob) => {
+  const db = await openDatabase();
+
+  return new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+
+    transaction.objectStore(STORE_NAME).put(blob, id);
+
+    transaction.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error);
+    };
+  });
+};
+
+const readVideoFile = async (id: string): Promise<Blob | null> => {
+  const db = await openDatabase();
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readonly');
+    const request = transaction.objectStore(STORE_NAME).get(id);
+
+    request.onsuccess = () => {
+      db.close();
+      resolve(request.result || null);
+    };
+
+    request.onerror = () => {
+      db.close();
+      reject(request.error);
+    };
+  });
+};
+
+const deleteVideoFile = async (id: string) => {
+  const db = await openDatabase();
+
+  return new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+
+    transaction.objectStore(STORE_NAME).delete(id);
+
+    transaction.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error);
+    };
+  });
+};
+
+const DownloadContext = createContext<DownloadContextType | undefined>(
+  undefined
+);
+
+export const DownloadProvider: React.FC<{
+  children: React.ReactNode;
+}> = ({ children }) => {
+
   const [downloads, setDownloads] = useState<DownloadItem[]>(() => {
-    const saved = localStorage.getItem('app-downloads');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('app-downloads');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
   });
 
   useEffect(() => {
     localStorage.setItem('app-downloads', JSON.stringify(downloads));
   }, [downloads]);
 
-  // Mock download progress effect
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setDownloads(current => 
-        current.map(item => {
-          if (item.status === 'downloading' && item.progress < 100) {
-            const newProgress = Math.min(item.progress + Math.random() * 15, 100);
-            return {
-              ...item,
-              progress: newProgress,
-              status: newProgress === 100 ? 'completed' : 'downloading'
-            };
-          }
-          return item;
-        })
-      );
-    }, 1500);
-    return () => clearInterval(interval);
-  }, []);
-
   const startDownload = (url: string, platform: string) => {
+    const id = crypto.randomUUID();
+
     const newItem: DownloadItem = {
-      id: Math.random().toString(36).substr(2, 9),
+      id,
       title: `Video from ${platform}`,
       url,
-      thumbnail: `https://picsum.photos/seed/${Math.random()}/400/225`,
+      thumbnail: '',
       platform,
       quality: 'HD',
       progress: 0,
       status: 'downloading',
       timestamp: Date.now(),
-      size: (Math.random() * 50 + 10).toFixed(1) + ' MB',
+      size: 'Calculating...',
       type: 'video'
     };
-    setDownloads(prev => [newItem, ...prev]);
-    toast.success('Download started!');
+
+    setDownloads(previous => [newItem, ...previous]);
+
+    return id;
+  };
+
+  const updateProgress = (id: string, progress: number) => {
+    setDownloads(previous =>
+      previous.map(item =>
+        item.id === id
+          ? { ...item, progress: Math.min(99, Math.max(0, progress)) }
+          : item
+      )
+    );
+  };
+
+  const completeDownload = async (id: string, blob: Blob) => {
+    try {
+      if (!blob || blob.size === 0) {
+        throw new Error('Downloaded file is empty');
+      }
+
+      await saveVideoFile(id, blob);
+
+      const size = (blob.size / (1024 * 1024)).toFixed(1);
+
+      setDownloads(previous =>
+        previous.map(item =>
+          item.id === id
+            ? {
+                ...item,
+                progress: 100,
+                status: 'completed',
+                size: `${size} MB`
+              }
+            : item
+        )
+      );
+
+      toast.success('Video saved to Gallery!');
+    } catch {
+      setDownloads(previous =>
+        previous.map(item =>
+          item.id === id
+            ? { ...item, status: 'failed' }
+            : item
+        )
+      );
+
+      toast.error('Could not save video');
+    }
+  };
+
+  const failDownload = (id: string) => {
+    setDownloads(previous =>
+      previous.map(item =>
+        item.id === id
+          ? { ...item, status: 'failed' }
+          : item
+      )
+    );
   };
 
   const pauseDownload = (id: string) => {
-    setDownloads(prev => prev.map(item => 
-      item.id === id ? { ...item, status: 'paused' } : item
-    ));
-    toast.info('Download paused');
+    setDownloads(previous =>
+      previous.map(item =>
+        item.id === id
+          ? { ...item, status: 'paused' }
+          : item
+      )
+    );
   };
 
   const resumeDownload = (id: string) => {
-    setDownloads(prev => prev.map(item => 
-      item.id === id ? { ...item, status: 'downloading' } : item
-    ));
-    toast.info('Download resumed');
+    setDownloads(previous =>
+      previous.map(item =>
+        item.id === id
+          ? { ...item, status: 'downloading' }
+          : item
+      )
+    );
   };
 
   const cancelDownload = (id: string) => {
-    setDownloads(prev => prev.filter(item => item.id !== id));
-    toast.error('Download cancelled');
+    deleteVideoFile(id).catch(() => {});
+
+    setDownloads(previous =>
+      previous.filter(item => item.id !== id)
+    );
   };
 
   const clearHistory = () => {
+    downloads.forEach(item => {
+      deleteVideoFile(item.id).catch(() => {});
+    });
+
     setDownloads([]);
-    toast.success('History cleared');
+    toast.success('Download history cleared');
   };
 
   const stats = {
-    totalDownloaded: downloads.filter(d => d.status === 'completed').length,
-    totalSize: (downloads.filter(d => d.status === 'completed').reduce((acc, d) => acc + parseFloat(d.size), 0)).toFixed(1) + ' MB',
-    favorites: 0 // Placeholder
+    totalDownloaded: downloads.filter(
+      item => item.status === 'completed'
+    ).length,
+
+    totalSize: downloads
+      .filter(item => item.status === 'completed')
+      .reduce(
+        (total, item) => total + parseFloat(item.size || '0'),
+        0
+      )
+      .toFixed(1) + ' MB',
+
+    favorites: 0
   };
 
   return (
-    <DownloadContext.Provider value={{ downloads, startDownload, pauseDownload, resumeDownload, cancelDownload, clearHistory, stats }}>
+    <DownloadContext.Provider
+      value={{
+        downloads,
+        startDownload,
+        completeDownload,
+        getVideoBlob: readVideoFile,
+        updateProgress,
+        failDownload,
+        pauseDownload,
+        resumeDownload,
+        cancelDownload,
+        clearHistory,
+        stats
+      }}
+    >
       {children}
     </DownloadContext.Provider>
   );
@@ -118,6 +293,12 @@ export const DownloadProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
 export const useDownloads = () => {
   const context = useContext(DownloadContext);
-  if (!context) throw new Error('useDownloads must be used within DownloadProvider');
+
+  if (!context) {
+    throw new Error(
+      'useDownloads must be used within DownloadProvider'
+    );
+  }
+
   return context;
 };
