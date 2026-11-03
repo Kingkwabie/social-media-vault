@@ -74,22 +74,30 @@ export default async function handler(req: any, res: any) {
 
     timer = setTimeout(() => {
       controller.abort();
-    },  50000);
+    }, 50000);
+
+    console.log('Starting extraction:', hostname);
 
     const response = await fetch(apiUrl.toString(), {
       method: 'GET',
       headers: {
-        Accept: 'application/json'
+        Accept: 'application/json',
+        'User-Agent': 'Mozilla/5.0'
       },
       signal: controller.signal
     });
 
     if (!response.ok) {
-      console.error('FreeAPI HTTP error:', response.status);
+      const errorDetails = await response.text();
+
+      console.error('FreeAPI HTTP error:', {
+        status: response.status,
+        details: errorDetails
+      });
 
       return res.status(502).json({
         success: false,
-        error: 'Extraction service temporarily unavailable'
+        error: `FreeAPI error (${response.status}): ${errorDetails.slice(0, 300)}`
       });
     }
 
@@ -112,17 +120,50 @@ export default async function handler(req: any, res: any) {
 
       return res.status(422).json({
         success: false,
-        error: result.error || 'This video could not be extracted. Try another public video.'
+        error: result.error ||
+          'This video could not be extracted. Try another public video.'
       });
     }
+
+    const videoUrl = media.videoUrl;
+
+    let validVideoUrl: URL;
+
+    try {
+      validVideoUrl = new URL(videoUrl);
+    } catch {
+      return res.status(502).json({
+        success: false,
+        error: 'Extraction service returned an invalid video link'
+      });
+    }
+
+    if (validVideoUrl.protocol !== 'https:') {
+      return res.status(502).json({
+        success: false,
+        error: 'Extraction service returned an unsupported video link'
+      });
+    }
+
+    const thumbnail =
+      typeof media.thumbnail === 'string' &&
+      media.thumbnail.startsWith('https://')
+        ? media.thumbnail
+        : '';
+
+    console.log('Extraction successful:', {
+      platform: media.platform || hostname,
+      hasThumbnail: Boolean(thumbnail),
+      hasVideoUrl: Boolean(videoUrl)
+    });
 
     return res.status(200).json({
       success: true,
       mediaInfo: {
         title: media.title || 'Social Media Video',
         platform: media.platform || hostname,
-        thumbnail: media.thumbnail || '',
-        videoUrl: media.videoUrl,
+        thumbnail,
+        videoUrl,
         audioUrl: media.audioUrl || null,
         qualities: Array.isArray(media.qualities)
           ? media.qualities
@@ -133,16 +174,4 @@ export default async function handler(req: any, res: any) {
   } catch (error: any) {
     console.error('Analyze API error:', error);
 
-    return res.status(
-      error?.name === 'AbortError' ? 504 : 500
-    ).json({
-      success: false,
-      error: error?.name === 'AbortError'
-        ? 'Video extraction timed out. Please try again.'
-        : 'Unable to process video. Please try again.'
-    });
-
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
+    if (error?.name === 'Abort
