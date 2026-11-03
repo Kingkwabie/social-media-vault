@@ -74,7 +74,7 @@ export default async function handler(req: any, res: any) {
 
     timer = setTimeout(() => {
       controller.abort();
-    }, 25000);
+    },  50000);
 
     const response = await fetch(apiUrl.toString(), {
       method: 'GET',
