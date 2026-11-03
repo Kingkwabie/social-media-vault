@@ -6,6 +6,9 @@ export default async function handler(req: any, res: any) {
     });
   }
 
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
   try {
     const { url } = req.body || {};
 
@@ -19,7 +22,7 @@ export default async function handler(req: any, res: any) {
     let parsed: URL;
 
     try {
-      parsed = new URL(url);
+      parsed = new URL(url.trim());
     } catch {
       return res.status(400).json({
         success: false,
@@ -67,62 +70,79 @@ export default async function handler(req: any, res: any) {
       'https://freeapi.pro/api/alldl'
     );
 
-    apiUrl.searchParams.set('url', url);
+    apiUrl.searchParams.set('url', parsed.toString());
 
-    const controller = new AbortController();
+    timer = setTimeout(() => {
+      controller.abort();
+    }, 25000);
 
-    const timer = setTimeout(
-      () => controller.abort(),
-      25000
-    );
-
-    let response;
-
-    try {
-      response = await fetch(apiUrl.toString(), {
-        signal: controller.signal
-      });
-    } finally {
-      clearTimeout(timer);
-    }
+    const response = await fetch(apiUrl.toString(), {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json'
+      },
+      signal: controller.signal
+    });
 
     if (!response.ok) {
+      console.error('FreeAPI HTTP error:', response.status);
+
       return res.status(502).json({
         success: false,
-        error: 'Video extraction service failed'
+        error: 'Extraction service temporarily unavailable'
       });
     }
 
     const result = await response.json();
 
-    if (
-      !result.success ||
-      !result.mediaInfo?.videoUrl
-    ) {
-      return res.status(422).json({
+    if (!result || typeof result !== 'object') {
+      return res.status(502).json({
         success: false,
-        error: 'Could not extract this video'
+        error: 'Invalid extraction service response'
       });
     }
 
     const media = result.mediaInfo;
 
+    if (!result.success || !media || !media.videoUrl) {
+      console.error('FreeAPI extraction failed:', {
+        platform: hostname,
+        response: result
+      });
+
+      return res.status(422).json({
+        success: false,
+        error: result.error || 'This video could not be extracted. Try another public video.'
+      });
+    }
+
     return res.status(200).json({
       success: true,
       mediaInfo: {
-        title: media.title,
-        platform: media.platform,
-        thumbnail: media.thumbnail,
+        title: media.title || 'Social Media Video',
+        platform: media.platform || hostname,
+        thumbnail: media.thumbnail || '',
         videoUrl: media.videoUrl,
         audioUrl: media.audioUrl || null,
-        qualities: media.qualities || []
+        qualities: Array.isArray(media.qualities)
+          ? media.qualities
+          : []
       }
     });
 
-  } catch (error) {
-    return res.status(500).json({
+  } catch (error: any) {
+    console.error('Analyze API error:', error);
+
+    return res.status(
+      error?.name === 'AbortError' ? 504 : 500
+    ).json({
       success: false,
-      error: 'Unable to process video. Please try again.'
+      error: error?.name === 'AbortError'
+        ? 'Video extraction timed out. Please try again.'
+        : 'Unable to process video. Please try again.'
     });
+
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
