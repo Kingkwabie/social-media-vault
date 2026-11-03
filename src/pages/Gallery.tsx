@@ -8,7 +8,7 @@ const Gallery: React.FC = () => {
   const { downloads, cancelDownload } = useDownloads();
 
   const completedDownloads = downloads.filter(
-    item => item.status === 'completed'
+    (item) => item.status === 'completed'
   );
 
   return (
@@ -22,7 +22,7 @@ const Gallery: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          {completedDownloads.map(item => (
+          {completedDownloads.map((item) => (
             <MediaCard
               key={item.id}
               item={item}
@@ -35,49 +35,67 @@ const Gallery: React.FC = () => {
   );
 };
 
-const MediaCard = ({
-  item,
-  onDelete
-}: {
+interface MediaCardProps {
   item: DownloadItem;
   onDelete: () => void;
-}) => {
+}
+
+const MediaCard: React.FC<MediaCardProps> = ({ item, onDelete }) => {
   const { getVideoBlob } = useDownloads();
   const [videoUrl, setVideoUrl] = useState('');
-  const [viewMode] = useState<'grid' | 'list'>('grid');
 
   useEffect(() => {
     let objectUrl = '';
+    let cancelled = false;
 
-    getVideoBlob(item.id).then(blob => {
-      if (blob) {
-        objectUrl = URL.createObjectURL(blob);
-        setVideoUrl(objectUrl);
+    const loadVideo = async () => {
+      try {
+        const blob = await getVideoBlob(item.id);
+
+        if (blob && !cancelled) {
+          objectUrl = URL.createObjectURL(blob);
+          setVideoUrl(objectUrl);
+        }
+      } catch (error) {
+        console.error('Could not load saved video:', error);
       }
-    });
+    };
+
+    loadVideo();
 
     return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      cancelled = true;
+
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
     };
   }, [item.id, getVideoBlob]);
 
   const handleShare = async () => {
-    if (!videoUrl) return;
+    try {
+      const blob = await getVideoBlob(item.id);
 
-    const blob = await getVideoBlob(item.id);
-    if (!blob) return;
+      if (!blob) return;
 
-    const file = new File([blob], 'social-video.mp4', {
-      type: blob.type || 'video/mp4'
-    });
+      const file = new File([blob], 'social-video.mp4', {
+        type: blob.type || 'video/mp4'
+      });
 
-    if (navigator.share && navigator.canShare?.({ files: [file] })) {
-      await navigator.share({ files: [file] });
-    } else {
-      const link = document.createElement('a');
-      link.href = videoUrl;
-      link.download = 'social-video.mp4';
-      link.click();
+      if (typeof navigator.share === 'function') {
+        await navigator.share({
+          files: [file]
+        });
+      } else {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'social-video.mp4';
+        link.click();
+
+        setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+      }
+    } catch (error) {
+      console.error('Sharing failed:', error);
     }
   };
 
@@ -89,11 +107,7 @@ const MediaCard = ({
           controls
           playsInline
           preload="metadata"
-          className={
-            viewMode === 'grid'
-              ? 'w-full aspect-[4/5] object-cover'
-              : 'w-24 h-24 object-cover rounded-lg'
-          }
+          className="w-full aspect-[4/5] object-cover"
         />
       ) : (
         <div className="w-full aspect-[4/5] bg-muted flex items-center justify-center">
@@ -102,7 +116,9 @@ const MediaCard = ({
       )}
 
       <div className="p-3 space-y-2">
-        <h3 className="text-xs font-bold truncate">{item.title}</h3>
+        <h3 className="text-xs font-bold truncate">
+          {item.title}
+        </h3>
 
         <p className="text-[10px] text-muted-foreground">
           {item.platform} • {item.size}
