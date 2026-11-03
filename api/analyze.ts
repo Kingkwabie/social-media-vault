@@ -45,6 +45,7 @@ export default async function handler(req: any, res: any) {
       'youtube.com',
       'youtu.be',
       'threads.net',
+      'threads.com',
       'snapchat.com',
       'x.com',
       'twitter.com',
@@ -174,4 +175,21 @@ export default async function handler(req: any, res: any) {
   } catch (error: any) {
     console.error('Analyze API error:', error);
 
-    if (error?.name === 'Abort
+    if (error?.name === 'AbortError') {
+      return res.status(504).json({
+        success: false,
+        error: 'Video extraction timed out. Please try again.'
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to process video. Please try again.'
+    });
+
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
