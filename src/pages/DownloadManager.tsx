@@ -19,20 +19,20 @@ const DownloadManager: React.FC = () => {
   const { downloads, cancelDownload } = useDownloads();
 
   const activeDownloads = downloads.filter(
-    item => item.status === 'downloading' || item.status === 'paused'
+    (item) =>
+      item.status === 'downloading' || item.status === 'paused'
   );
 
   const completedDownloads = downloads.filter(
-    item => item.status === 'completed'
+    (item) => item.status === 'completed'
   );
 
   const failedDownloads = downloads.filter(
-    item => item.status === 'failed'
+    (item) => item.status === 'failed'
   );
 
   return (
     <div className="p-4 space-y-5">
-
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold">Download Queue</h2>
 
@@ -56,7 +56,7 @@ const DownloadManager: React.FC = () => {
                 Active downloads
               </h3>
 
-              {activeDownloads.map(item => (
+              {activeDownloads.map((item) => (
                 <DownloadCard
                   key={item.id}
                   item={item}
@@ -72,7 +72,7 @@ const DownloadManager: React.FC = () => {
                 Completed ({completedDownloads.length})
               </h3>
 
-              {completedDownloads.map(item => (
+              {completedDownloads.map((item) => (
                 <DownloadCard
                   key={item.id}
                   item={item}
@@ -88,7 +88,7 @@ const DownloadManager: React.FC = () => {
                 Failed ({failedDownloads.length})
               </h3>
 
-              {failedDownloads.map(item => (
+              {failedDownloads.map((item) => (
                 <DownloadCard
                   key={item.id}
                   item={item}
@@ -99,7 +99,6 @@ const DownloadManager: React.FC = () => {
           )}
         </>
       )}
-
     </div>
   );
 };
@@ -118,9 +117,7 @@ const DownloadCard: React.FC<DownloadCardProps> = ({
 
   return (
     <Card className="p-3 border-none shadow-sm">
-
       <div className="flex gap-3">
-
         <div className="w-14 h-14 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden">
           {item.thumbnail ? (
             <img
@@ -134,7 +131,6 @@ const DownloadCard: React.FC<DownloadCardProps> = ({
         </div>
 
         <div className="flex-1 min-w-0 space-y-2">
-
           <div className="flex justify-between items-start gap-2">
             <h3 className="text-xs font-bold truncate">
               {item.title}
@@ -150,7 +146,6 @@ const DownloadCard: React.FC<DownloadCardProps> = ({
           </div>
 
           <div className="flex items-center gap-1 text-[10px] font-bold uppercase">
-
             {isCompleted ? (
               <CheckCircle2 className="w-3 h-3 text-green-500" />
             ) : isFailed ? (
@@ -161,13 +156,15 @@ const DownloadCard: React.FC<DownloadCardProps> = ({
               <Loader2 className="w-3 h-3 animate-spin text-primary" />
             )}
 
-            <span className={
-              isCompleted
-                ? 'text-green-500'
-                : isFailed
-                  ? 'text-destructive'
-                  : 'text-muted-foreground'
-            }>
+            <span
+              className={
+                isCompleted
+                  ? 'text-green-500'
+                  : isFailed
+                    ? 'text-destructive'
+                    : 'text-muted-foreground'
+              }
+            >
               {isCompleted
                 ? 'Completed'
                 : isFailed
@@ -176,7 +173,6 @@ const DownloadCard: React.FC<DownloadCardProps> = ({
                     ? 'Paused'
                     : 'Downloading'}
             </span>
-
           </div>
 
           <Progress
@@ -186,7 +182,7 @@ const DownloadCard: React.FC<DownloadCardProps> = ({
 
           <div className="flex justify-between text-[10px] text-muted-foreground">
             <span>
-              {item.platform} • {item.quality}
+              {item.platform} - {item.quality}
             </span>
 
             <span>
@@ -195,10 +191,8 @@ const DownloadCard: React.FC<DownloadCardProps> = ({
                 : `${item.progress.toFixed(0)}%`}
             </span>
           </div>
-
         </div>
       </div>
-
     </Card>
   );
 };
