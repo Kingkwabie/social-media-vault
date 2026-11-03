@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { useDownloads } from '@/context/DownloadContext';
 
 interface PreviewData {
   title: string;
@@ -15,6 +16,9 @@ interface PreviewData {
 }
 
 const UrlDownloader: React.FC = () => {
+  const { startDownload, completeDownload, failDownload, updateProgress } =
+    useDownloads();
+
   const [url, setUrl] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -80,6 +84,8 @@ const UrlDownloader: React.FC = () => {
 
     if (selected) downloadUrl = selected.url;
 
+    const downloadId = startDownload(downloadUrl, preview.platform);
+
     setIsDownloading(true);
 
     try {
@@ -88,11 +94,29 @@ const UrlDownloader: React.FC = () => {
       );
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Download failed');
+        let message = 'Download failed';
+
+        try {
+          const error = await response.json();
+          message = error.error || message;
+        } catch {
+          // Keep the default error message.
+        }
+
+        throw new Error(message);
       }
 
       const blob = await response.blob();
+
+      if (!blob.size) {
+        throw new Error('The downloaded video is empty');
+      }
+
+      updateProgress(downloadId, 99);
+
+      await completeDownload(downloadId, blob);
+
+      // Also offer the video as a device download.
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
 
@@ -104,8 +128,10 @@ const UrlDownloader: React.FC = () => {
 
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
 
-      toast.success('Download started!');
+      toast.success('Video saved to your app Gallery!');
     } catch (error) {
+      failDownload(downloadId);
+
       toast.error(
         error instanceof Error ? error.message : 'Download failed'
       );
