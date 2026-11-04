@@ -37,6 +37,8 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    const hostname = parsed.hostname.toLowerCase();
+
     const domains = [
       'tiktok.com',
       'facebook.com',
@@ -53,18 +55,34 @@ export default async function handler(req: any, res: any) {
       'pin.it'
     ];
 
-    const hostname = parsed.hostname.toLowerCase();
-
-    const supported = domains.some(domain =>
+    const isSupported = domains.some(domain =>
       hostname === domain ||
       hostname.endsWith('.' + domain)
     );
 
-    if (!supported) {
+    if (!isSupported) {
       return res.status(400).json({
         success: false,
-        error: 'Unsupported platform'
+        error: `Unsupported platform: ${hostname}`
       });
+    }
+
+    if (
+      hostname === 'threads.com' ||
+      hostname.endsWith('.threads.com') ||
+      hostname === 'threads.net' ||
+      hostname.endsWith('.threads.net')
+    ) {
+      const isThreadsPost =
+        /^\/@[^/]+\/post\/[A-Za-z0-9_-]+\/?$/.test(parsed.pathname) ||
+        /^\/t\/[A-Za-z0-9_-]+\/?$/.test(parsed.pathname);
+
+      if (!isThreadsPost) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid Threads post link'
+        });
+      }
     }
 
     const apiUrl = new URL(
@@ -89,16 +107,16 @@ export default async function handler(req: any, res: any) {
     });
 
     if (!response.ok) {
-      const errorDetails = await response.text();
+      const details = await response.text();
 
       console.error('FreeAPI HTTP error:', {
         status: response.status,
-        details: errorDetails
+        details
       });
 
       return res.status(502).json({
         success: false,
-        error: `FreeAPI error (${response.status}): ${errorDetails.slice(0, 300)}`
+        error: `FreeAPI error (${response.status}): ${details.slice(0, 300)}`
       });
     }
 
@@ -114,35 +132,30 @@ export default async function handler(req: any, res: any) {
     const media = result.mediaInfo;
 
     if (!result.success || !media || !media.videoUrl) {
-      console.error('FreeAPI extraction failed:', {
-        platform: hostname,
-        response: result
-      });
+      console.error('Extraction failed:', result);
 
       return res.status(422).json({
         success: false,
         error: result.error ||
-          'This video could not be extracted. Try another public video.'
+          'This video could not be extracted.'
       });
     }
 
-    const videoUrl = media.videoUrl;
-
-    let validVideoUrl: URL;
+    let videoUrl: URL;
 
     try {
-      validVideoUrl = new URL(videoUrl);
+      videoUrl = new URL(media.videoUrl);
     } catch {
       return res.status(502).json({
         success: false,
-        error: 'Extraction service returned an invalid video link'
+        error: 'Invalid video link returned by extraction service'
       });
     }
 
-    if (validVideoUrl.protocol !== 'https:') {
+    if (videoUrl.protocol !== 'https:') {
       return res.status(502).json({
         success: false,
-        error: 'Extraction service returned an unsupported video link'
+        error: 'Unsupported video link returned by extraction service'
       });
     }
 
@@ -152,19 +165,13 @@ export default async function handler(req: any, res: any) {
         ? media.thumbnail
         : '';
 
-    console.log('Extraction successful:', {
-      platform: media.platform || hostname,
-      hasThumbnail: Boolean(thumbnail),
-      hasVideoUrl: Boolean(videoUrl)
-    });
-
     return res.status(200).json({
       success: true,
       mediaInfo: {
         title: media.title || 'Social Media Video',
         platform: media.platform || hostname,
         thumbnail,
-        videoUrl,
+        videoUrl: videoUrl.toString(),
         audioUrl: media.audioUrl || null,
         qualities: Array.isArray(media.qualities)
           ? media.qualities
@@ -175,21 +182,16 @@ export default async function handler(req: any, res: any) {
   } catch (error: any) {
     console.error('Analyze API error:', error);
 
-    if (error?.name === 'AbortError') {
-      return res.status(504).json({
-        success: false,
-        error: 'Video extraction timed out. Please try again.'
-      });
-    }
-
-    return res.status(500).json({
+    return res.status(
+      error?.name === 'AbortError' ? 504 : 500
+    ).json({
       success: false,
-      error: 'Unable to process video. Please try again.'
+      error: error?.name === 'AbortError'
+        ? 'Video extraction timed out.'
+        : 'Unable to process video.'
     });
 
   } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
+    if (timer) clearTimeout(timer);
   }
 }
