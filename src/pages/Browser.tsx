@@ -1,14 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Search,
   ArrowLeft,
-  ArrowRight,
   RotateCcw,
-  Home as HomeIcon,
-  Download,
-  ShieldCheck,
+  Home,
   Globe,
-  ExternalLink
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
 
 import { Input } from '@/components/ui/input';
@@ -16,37 +14,26 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
 const Browser: React.FC = () => {
-  const [url, setUrl] = useState('');
   const [inputUrl, setInputUrl] = useState('');
-  const [history, setHistory] = useState<string[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const [loading, setLoading] = useState(false);
-  const [showFallback, setShowFallback] = useState(false);
+  const [lastUrl, setLastUrl] = useState('');
 
-  useEffect(() => {
-    if (!url) return;
+  const openWebsite = () => {
+    const address = inputUrl.trim();
 
-    setLoading(true);
-    setShowFallback(false);
-
-    const timer = setTimeout(() => {
-      setLoading(false);
-      setShowFallback(true);
-    }, 10000);
-
-    return () => clearTimeout(timer);
-  }, [url]);
-
-  const openWebsite = (address: string) => {
-    let formatted = address.trim();
-
-    if (!formatted) {
-      toast.error('Enter a website address first.');
+    if (!address) {
+      toast.error('Enter a website or search term.');
       return;
     }
 
-    if (!/^https?:\/\//i.test(formatted)) {
+    let formatted = address;
+
+    if (/^https?:\/\//i.test(formatted)) {
+      // Keep the supplied website address.
+    } else if (formatted.includes('.') && !formatted.includes(' ')) {
       formatted = 'https://' + formatted;
+    } else {
+      formatted = 'https://www.google.com/search?q=' +
+        encodeURIComponent(formatted);
     }
 
     try {
@@ -58,231 +45,144 @@ const Browser: React.FC = () => {
       }
 
       formatted = parsed.href;
+      setLastUrl(formatted);
 
-      const newHistory = history.slice(0, historyIndex + 1);
-      newHistory.push(formatted);
+      const newWindow = window.open(
+        formatted,
+        '_blank',
+        'noopener,noreferrer'
+      );
 
-      setHistory(newHistory);
-      setHistoryIndex(newHistory.length - 1);
-      setUrl(formatted);
-      setInputUrl(formatted);
+      if (!newWindow) {
+        window.location.assign(formatted);
+      }
 
     } catch {
       toast.error('Please enter a valid website address.');
     }
   };
 
-  const goBack = () => {
-    if (historyIndex > 0) {
-      const newIndex = historyIndex - 1;
-      setHistoryIndex(newIndex);
-      setUrl(history[newIndex]);
-      setInputUrl(history[newIndex]);
-    }
-  };
-
-  const goForward = () => {
-    if (historyIndex < history.length - 1) {
-      const newIndex = historyIndex + 1;
-      setHistoryIndex(newIndex);
-      setUrl(history[newIndex]);
-      setInputUrl(history[newIndex]);
-    }
-  };
-
   const goHome = () => {
-    setUrl('');
     setInputUrl('');
-    setLoading(false);
-    setShowFallback(false);
+    setLastUrl('');
   };
 
-  const reloadPage = () => {
-    if (url) {
-      setLoading(true);
-      setShowFallback(false);
-      setUrl('');
-      setTimeout(() => setUrl(url), 100);
-    }
-  };
+  const openLastWebsite = () => {
+    if (!lastUrl) return;
 
-  const openExternal = () => {
-    if (!url) return;
+    const newWindow = window.open(
+      lastUrl,
+      '_blank',
+      'noopener,noreferrer'
+    );
 
-    const opened = window.open(url, '_blank');
-
-    if (!opened) {
-      window.location.assign(url);
+    if (!newWindow) {
+      window.location.assign(lastUrl);
     }
   };
 
   return (
     <div className="flex flex-col h-full min-h-0">
 
-      <div className="p-3 border-b border-border bg-card space-y-3">
+      <div className="p-4 border-b bg-card space-y-4">
 
         <div className="flex gap-2">
           <Input
-            className="h-11 text-sm"
-            placeholder="Search or enter website..."
             value={inputUrl}
             onChange={(e) => setInputUrl(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                openWebsite(inputUrl);
-              }
+              if (e.key === 'Enter') openWebsite();
             }}
+            placeholder="Enter website or search..."
+            className="h-12"
           />
 
-          <Button
-            onClick={() => openWebsite(inputUrl)}
-            className="h-11"
-          >
+          <Button onClick={openWebsite} className="h-12">
             <Search className="w-5 h-5" />
           </Button>
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex justify-between items-center">
 
-          <div className="flex items-center gap-5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={goHome}
+          >
+            <Home className="w-4 h-4 mr-2" />
+            Home
+          </Button>
 
-            <button
-              onClick={goBack}
-              disabled={historyIndex <= 0}
-              className="disabled:opacity-30"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-
-            <button
-              onClick={goForward}
-              disabled={historyIndex >= history.length - 1}
-              className="disabled:opacity-30"
-            >
-              <ArrowRight className="w-5 h-5" />
-            </button>
-
-            <button onClick={reloadPage}>
-              <RotateCcw className="w-5 h-5" />
-            </button>
-
-            <button onClick={goHome}>
-              <HomeIcon className="w-5 h-5" />
-            </button>
-
-          </div>
-
-          <div className="flex items-center gap-1 text-xs text-green-500 font-bold">
+          <div className="flex items-center gap-1 text-xs text-green-500">
             <ShieldCheck className="w-4 h-4" />
-            HTTPS
+            Secure browsing
           </div>
 
         </div>
+
       </div>
 
-      <div className="flex-1 min-h-0 relative bg-white dark:bg-background">
+      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
 
-        {!url ? (
+        <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-5">
+          <Globe className="w-10 h-10 text-primary" />
+        </div>
 
-          <div className="h-full flex flex-col items-center justify-center p-8 text-center space-y-5">
+        <h2 className="text-xl font-bold">
+          Social Media Vault Browser
+        </h2>
 
-            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-              <Globe className="w-10 h-10 text-primary" />
-            </div>
+        <p className="text-sm text-muted-foreground mt-3 max-w-sm">
+          Visit your favourite websites or search the internet.
+          Websites open in a separate browser page.
+        </p>
 
-            <div>
-              <h3 className="text-xl font-bold">
-                Social Media Vault Browser
-              </h3>
+        <div className="grid grid-cols-2 gap-3 mt-6 w-full max-w-sm">
 
-              <p className="text-sm text-muted-foreground mt-2">
-                Enter a website address to start browsing.
-              </p>
-            </div>
-
+          {[
+            'https://www.google.com',
+            'https://www.youtube.com',
+            'https://www.instagram.com',
+            'https://www.tiktok.com',
+            'https://www.facebook.com',
+            'https://www.x.com'
+          ].map((site) => (
             <Button
+              key={site}
               variant="outline"
-              onClick={() => openWebsite('https://example.com')}
-            >
-              Test Browser
-            </Button>
+              onClick={() => {
+                setInputUrl(site);
+                const newWindow = window.open(
+                  site,
+                  '_blank',
+                  'noopener,noreferrer'
+                );
 
-          </div>
+                if (!newWindow) {
+                  window.location.assign(site);
+                }
 
-        ) : (
-
-          <>
-            <iframe
-              key={url}
-              src={url}
-              title="Social Media Vault Browser"
-              className="w-full h-full border-0"
-              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-              referrerPolicy="strict-origin-when-cross-origin"
-              onLoad={() => {
-                setLoading(false);
+                setLastUrl(site);
               }}
-            />
+            >
+              <ExternalLink className="w-4 h-4 mr-2" />
+              {new URL(site).hostname.replace('www.', '').split('.')[0]}
+            </Button>
+          ))}
 
-            {loading && (
-              <div className="absolute top-2 left-2 right-2 bg-card p-3 rounded-lg shadow text-center text-sm">
-                Loading website...
-              </div>
-            )}
+        </div>
 
-            {showFallback && (
-              <div className="absolute bottom-3 left-3 right-3 bg-card border rounded-xl p-4 shadow-lg text-center space-y-3">
-
-                <p className="text-sm font-medium">
-                  Is the website not displaying?
-                </p>
-
-                <p className="text-xs text-muted-foreground">
-                  Some websites block embedded browsing. Try opening the website separately.
-                </p>
-
-                <Button
-                  className="w-full"
-                  onClick={openExternal}
-                >
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Open Website
-                </Button>
-
-              </div>
-            )}
-          </>
+        {lastUrl && (
+          <Button
+            onClick={openLastWebsite}
+            className="mt-6 w-full max-w-sm"
+          >
+            <RotateCcw className="w-4 h-4 mr-2" />
+            Open Last Website
+          </Button>
         )}
 
       </div>
-
-      {url && (
-        <div className="p-2 border-t bg-card flex items-center justify-between gap-2">
-
-          <span className="text-xs truncate text-muted-foreground">
-            {url}
-          </span>
-
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={openExternal}
-          >
-            <ExternalLink className="w-4 h-4 mr-1" />
-            Open
-          </Button>
-
-        </div>
-      )}
-
-      <Button
-        className="fixed bottom-20 right-6 w-14 h-14 rounded-full shadow-xl z-[60]"
-        onClick={() => {
-          toast.info('Open a supported video page to download its media.');
-        }}
-      >
-        <Download className="w-6 h-6" />
-      </Button>
 
     </div>
   );
