@@ -15,6 +15,35 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
+const restrictedSites = [
+  'instagram.com',
+  'facebook.com',
+  'tiktok.com',
+  'youtube.com',
+  'youtu.be',
+  'twitter.com',
+  'x.com',
+  'snapchat.com',
+  'threads.net',
+  'linkedin.com',
+  'reddit.com',
+  'pinterest.com',
+  'whatsapp.com',
+  'web.whatsapp.com'
+];
+
+const isRestrictedWebsite = (address: string) => {
+  try {
+    const hostname = new URL(address).hostname.toLowerCase();
+
+    return restrictedSites.some(
+      site => hostname === site || hostname.endsWith('.' + site)
+    );
+  } catch {
+    return false;
+  }
+};
+
 const Browser: React.FC = () => {
   const [inputUrl, setInputUrl] = useState('');
   const [url, setUrl] = useState('');
@@ -33,19 +62,17 @@ const Browser: React.FC = () => {
     }
 
     if (!/^https?:\/\//i.test(formatted)) {
-      if (formatted.includes('.') && !formatted.includes(' ')) {
-        formatted = 'https://' + formatted;
-      } else {
-        formatted =
-          'https://www.google.com/search?q=' +
-          encodeURIComponent(formatted);
-      }
+      formatted =
+        formatted.includes('.') && !formatted.includes(' ')
+          ? 'https://' + formatted
+          : 'https://www.google.com/search?q=' +
+            encodeURIComponent(formatted);
     }
 
     try {
       const parsed = new URL(formatted);
 
-      if (!['http:', 'https:'].includes(parsed.protocol)) {
+      if (!['https:', 'http:'].includes(parsed.protocol)) {
         toast.error('Invalid website address.');
         return;
       }
@@ -59,7 +86,7 @@ const Browser: React.FC = () => {
       setHistoryIndex(newHistory.length - 1);
       setUrl(formatted);
       setInputUrl(formatted);
-      setLoading(true);
+      setLoading(!isRestrictedWebsite(formatted));
 
     } catch {
       toast.error('Please enter a valid website address.');
@@ -67,32 +94,32 @@ const Browser: React.FC = () => {
   };
 
   const goBack = () => {
-    if (historyIndex > 0) {
-      const newIndex = historyIndex - 1;
-      setHistoryIndex(newIndex);
-      setUrl(history[newIndex]);
-      setInputUrl(history[newIndex]);
-      setLoading(true);
-    }
+    if (historyIndex <= 0) return;
+
+    const index = historyIndex - 1;
+    setHistoryIndex(index);
+    setUrl(history[index]);
+    setInputUrl(history[index]);
+    setLoading(!isRestrictedWebsite(history[index]));
   };
 
   const goForward = () => {
-    if (historyIndex < history.length - 1) {
-      const newIndex = historyIndex + 1;
-      setHistoryIndex(newIndex);
-      setUrl(history[newIndex]);
-      setInputUrl(history[newIndex]);
-      setLoading(true);
-    }
+    if (historyIndex >= history.length - 1) return;
+
+    const index = historyIndex + 1;
+    setHistoryIndex(index);
+    setUrl(history[index]);
+    setInputUrl(history[index]);
+    setLoading(!isRestrictedWebsite(history[index]));
   };
 
   const refresh = () => {
-    if (url) {
-      setLoading(true);
+    if (!url || isRestrictedWebsite(url)) return;
 
-      if (iframeRef.current) {
-        iframeRef.current.src = url;
-      }
+    setLoading(true);
+
+    if (iframeRef.current) {
+      iframeRef.current.src = url;
     }
   };
 
@@ -107,47 +134,41 @@ const Browser: React.FC = () => {
   const openExternal = () => {
     if (!url) return;
 
-    const newWindow = window.open(url, '_blank');
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
 
-    if (!newWindow) {
+    if (!opened) {
       window.location.assign(url);
     }
   };
+
+  const restricted = url ? isRestrictedWebsite(url) : false;
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-background">
 
       {/* ADDRESS BAR */}
-
       <div className="p-3 border-b bg-card space-y-3">
 
         <div className="flex gap-2">
-
           <Input
             value={inputUrl}
-            onChange={(e) => setInputUrl(e.target.value)}
-            onKeyDown={(e) => {
+            onChange={e => setInputUrl(e.target.value)}
+            onKeyDown={e => {
               if (e.key === 'Enter') navigate(inputUrl);
             }}
             placeholder="Search or enter website..."
             className="h-11"
           />
 
-          <Button
-            onClick={() => navigate(inputUrl)}
-            className="h-11"
-          >
+          <Button onClick={() => navigate(inputUrl)} className="h-11">
             <Search className="w-5 h-5" />
           </Button>
-
         </div>
 
-        {/* NAVIGATION CONTROLS */}
-
+        {/* NAVIGATION */}
         <div className="flex justify-between items-center">
 
           <div className="flex gap-5 items-center">
-
             <button
               onClick={goBack}
               disabled={historyIndex <= 0}
@@ -164,27 +185,23 @@ const Browser: React.FC = () => {
               <ArrowRight className="w-5 h-5" />
             </button>
 
-            <button onClick={refresh}>
+            <button onClick={refresh} disabled={!url || restricted}>
               <RotateCcw className="w-5 h-5" />
             </button>
 
             <button onClick={goHome}>
               <Home className="w-5 h-5" />
             </button>
-
           </div>
 
-          <div className="flex gap-1 items-center text-xs text-green-500">
+          <div className="flex items-center gap-1 text-xs text-green-500">
             <ShieldCheck className="w-4 h-4" />
             Secure
           </div>
-
         </div>
-
       </div>
 
-      {/* BROWSER CONTENT */}
-
+      {/* WEBSITE DISPLAY */}
       <div className="flex-1 min-h-0 relative">
 
         {!url ? (
@@ -200,19 +217,18 @@ const Browser: React.FC = () => {
             </h2>
 
             <p className="text-sm text-muted-foreground mt-2">
-              Browse websites directly inside your app.
+              Search the internet and visit your favourite websites.
             </p>
 
             <div className="grid grid-cols-2 gap-3 mt-6 w-full max-w-sm">
-
               {[
                 'https://example.com',
                 'https://www.wikipedia.org',
+                'https://www.google.com',
                 'https://www.instagram.com',
                 'https://www.tiktok.com',
-                'https://www.facebook.com',
                 'https://www.youtube.com'
-              ].map((site) => (
+              ].map(site => (
                 <Button
                   key={site}
                   variant="outline"
@@ -221,57 +237,86 @@ const Browser: React.FC = () => {
                   {new URL(site).hostname.replace('www.', '')}
                 </Button>
               ))}
-
             </div>
+          </div>
+
+        ) : restricted ? (
+
+          <div className="h-full flex flex-col items-center justify-center p-6 text-center">
+
+            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-5">
+              <ExternalLink className="w-10 h-10 text-primary" />
+            </div>
+
+            <h2 className="text-xl font-bold">
+              Website requires separate browsing
+            </h2>
+
+            <p className="text-sm text-muted-foreground mt-3 max-w-sm">
+              This website commonly blocks embedded browsing.
+              Open it separately to access its content.
+            </p>
+
+            <Button onClick={openExternal} className="mt-6 w-full max-w-sm">
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Open Website
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={goHome}
+              className="mt-3 w-full max-w-sm"
+            >
+              Return to Browser Home
+            </Button>
 
           </div>
 
         ) : (
 
-          <iframe
-            ref={iframeRef}
-            key={url}
-            src={url}
-            title="Social Media Vault Browser"
-            className="w-full h-full border-0"
-            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-            referrerPolicy="strict-origin-when-cross-origin"
-            onLoad={() => setLoading(false)}
-            onError={() => setLoading(false)}
-          />
+          <>
+            <iframe
+              ref={iframeRef}
+              key={url}
+              src={url}
+              title="Social Media Vault Browser"
+              className="w-full h-full border-0"
+              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+              referrerPolicy="strict-origin-when-cross-origin"
+              onLoad={() => setLoading(false)}
+            />
 
+            {loading && (
+              <div className="absolute top-3 left-3 right-3 bg-card rounded-lg p-3 shadow text-center text-sm">
+                Loading website...
+              </div>
+            )}
+          </>
         )}
-
-        {url && loading && (
-          <div className="absolute top-3 left-3 right-3 bg-card rounded-lg p-3 shadow text-center text-sm">
-            Loading website...
-          </div>
-        )}
-
       </div>
 
-      {/* WEBSITE FALLBACK */}
-
+      {/* WEBSITE ACTIONS */}
       {url && (
         <div className="p-3 border-t bg-card space-y-2">
 
-          <p className="text-xs text-muted-foreground text-center">
-            If the website is blank, it may block embedded browsing.
+          <p className="text-xs text-muted-foreground text-center truncate">
+            {url}
           </p>
 
-          <Button
-            onClick={openExternal}
-            className="w-full"
-          >
-            <ExternalLink className="w-4 h-4 mr-2" />
-            Open Website Separately
-          </Button>
-
+          {!restricted && (
+            <Button
+              variant="outline"
+              onClick={openExternal}
+              className="w-full"
+            >
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Open Separately
+            </Button>
+          )}
         </div>
       )}
 
       {/* DOWNLOAD BUTTON */}
-
       <Button
         className="fixed bottom-20 right-5 w-14 h-14 rounded-full shadow-xl z-[60]"
         onClick={() => {
