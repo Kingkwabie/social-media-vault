@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Search,
   ArrowLeft,
@@ -20,11 +20,30 @@ const Browser: React.FC = () => {
   const [inputUrl, setInputUrl] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [loading, setLoading] = useState(false);
+  const [showFallback, setShowFallback] = useState(false);
+
+  useEffect(() => {
+    if (!url) return;
+
+    setLoading(true);
+    setShowFallback(false);
+
+    const timer = setTimeout(() => {
+      setLoading(false);
+      setShowFallback(true);
+    }, 10000);
+
+    return () => clearTimeout(timer);
+  }, [url]);
 
   const openWebsite = (address: string) => {
     let formatted = address.trim();
 
-    if (!formatted) return;
+    if (!formatted) {
+      toast.error('Enter a website address first.');
+      return;
+    }
 
     if (!/^https?:\/\//i.test(formatted)) {
       formatted = 'https://' + formatted;
@@ -33,36 +52,12 @@ const Browser: React.FC = () => {
     try {
       const parsed = new URL(formatted);
 
-      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-        toast.error('Invalid website address');
+      if (!['https:', 'http:'].includes(parsed.protocol)) {
+        toast.error('Invalid website address.');
         return;
       }
 
       formatted = parsed.href;
-
-      const restrictedSites = [
-        'instagram.com',
-        'facebook.com',
-        'tiktok.com',
-        'youtube.com',
-        'threads.net',
-        'threads.com',
-        'snapchat.com',
-        'x.com',
-        'twitter.com'
-      ];
-
-      const hostname = parsed.hostname.toLowerCase();
-
-      const isRestricted = restrictedSites.some(
-        site => hostname === site || hostname.endsWith('.' + site)
-      );
-
-      if (isRestricted) {
-        window.open(formatted, '_blank', 'noopener,noreferrer');
-        toast.info('Opening website in a new browser tab.');
-        return;
-      }
 
       const newHistory = history.slice(0, historyIndex + 1);
       newHistory.push(formatted);
@@ -98,24 +93,38 @@ const Browser: React.FC = () => {
   const goHome = () => {
     setUrl('');
     setInputUrl('');
+    setLoading(false);
+    setShowFallback(false);
   };
 
   const reloadPage = () => {
     if (url) {
+      setLoading(true);
+      setShowFallback(false);
       setUrl('');
       setTimeout(() => setUrl(url), 100);
+    }
+  };
+
+  const openExternal = () => {
+    if (!url) return;
+
+    const opened = window.open(url, '_blank');
+
+    if (!opened) {
+      window.location.assign(url);
     }
   };
 
   return (
     <div className="flex flex-col h-full min-h-0">
 
-      <div className="p-2 border-b border-border bg-card space-y-2">
+      <div className="p-3 border-b border-border bg-card space-y-3">
 
         <div className="flex gap-2">
           <Input
-            className="h-10 text-sm"
-            placeholder="Search or enter URL..."
+            className="h-11 text-sm"
+            placeholder="Search or enter website..."
             value={inputUrl}
             onChange={(e) => setInputUrl(e.target.value)}
             onKeyDown={(e) => {
@@ -126,23 +135,30 @@ const Browser: React.FC = () => {
           />
 
           <Button
-            size="sm"
             onClick={() => openWebsite(inputUrl)}
-            className="h-10"
+            className="h-11"
           >
-            <Search className="w-4 h-4" />
+            <Search className="w-5 h-5" />
           </Button>
         </div>
 
-        <div className="flex items-center justify-between px-2">
+        <div className="flex items-center justify-between">
 
-          <div className="flex gap-4">
+          <div className="flex items-center gap-5">
 
-            <button onClick={goBack}>
+            <button
+              onClick={goBack}
+              disabled={historyIndex <= 0}
+              className="disabled:opacity-30"
+            >
               <ArrowLeft className="w-5 h-5" />
             </button>
 
-            <button onClick={goForward}>
+            <button
+              onClick={goForward}
+              disabled={historyIndex >= history.length - 1}
+              className="disabled:opacity-30"
+            >
               <ArrowRight className="w-5 h-5" />
             </button>
 
@@ -156,66 +172,101 @@ const Browser: React.FC = () => {
 
           </div>
 
-          <div className="flex items-center gap-1 text-xs text-green-500 font-bold uppercase">
+          <div className="flex items-center gap-1 text-xs text-green-500 font-bold">
             <ShieldCheck className="w-4 h-4" />
-            Secure
+            HTTPS
           </div>
 
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 bg-white dark:bg-background">
+      <div className="flex-1 min-h-0 relative bg-white dark:bg-background">
 
-        {url ? (
-          <iframe
-            key={url}
-            src={url}
-            title="Social Media Vault Browser"
-            className="w-full h-full border-0"
-            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-            referrerPolicy="strict-origin-when-cross-origin"
-          />
-        ) : (
+        {!url ? (
+
           <div className="h-full flex flex-col items-center justify-center p-8 text-center space-y-5">
 
             <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
               <Globe className="w-10 h-10 text-primary" />
             </div>
 
-            <div className="max-w-xs">
+            <div>
               <h3 className="text-xl font-bold">
-                Safe Browser Mode
+                Social Media Vault Browser
               </h3>
 
               <p className="text-sm text-muted-foreground mt-2">
                 Enter a website address to start browsing.
-                Some social-media websites open in a new browser tab.
               </p>
             </div>
 
             <Button
               variant="outline"
-              onClick={() => openWebsite('https://www.google.com')}
+              onClick={() => openWebsite('https://example.com')}
             >
-              Open Google
+              Test Browser
             </Button>
 
           </div>
+
+        ) : (
+
+          <>
+            <iframe
+              key={url}
+              src={url}
+              title="Social Media Vault Browser"
+              className="w-full h-full border-0"
+              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+              referrerPolicy="strict-origin-when-cross-origin"
+              onLoad={() => {
+                setLoading(false);
+              }}
+            />
+
+            {loading && (
+              <div className="absolute top-2 left-2 right-2 bg-card p-3 rounded-lg shadow text-center text-sm">
+                Loading website...
+              </div>
+            )}
+
+            {showFallback && (
+              <div className="absolute bottom-3 left-3 right-3 bg-card border rounded-xl p-4 shadow-lg text-center space-y-3">
+
+                <p className="text-sm font-medium">
+                  Is the website not displaying?
+                </p>
+
+                <p className="text-xs text-muted-foreground">
+                  Some websites block embedded browsing. Try opening the website separately.
+                </p>
+
+                <Button
+                  className="w-full"
+                  onClick={openExternal}
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Open Website
+                </Button>
+
+              </div>
+            )}
+          </>
         )}
 
       </div>
 
       {url && (
-        <div className="p-2 border-t flex items-center justify-between">
+        <div className="p-2 border-t bg-card flex items-center justify-between gap-2">
 
-          <span className="text-xs text-muted-foreground truncate">
+          <span className="text-xs truncate text-muted-foreground">
             {url}
           </span>
 
           <Button
             size="sm"
             variant="outline"
-            onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+            onClick={openExternal}
           >
             <ExternalLink className="w-4 h-4 mr-1" />
             Open
@@ -225,9 +276,9 @@ const Browser: React.FC = () => {
       )}
 
       <Button
-        className="fixed bottom-20 right-6 w-14 h-14 rounded-full shadow-2xl z-[60]"
+        className="fixed bottom-20 right-6 w-14 h-14 rounded-full shadow-xl z-[60]"
         onClick={() => {
-          toast.info('Open a supported video page to find downloadable media.');
+          toast.info('Open a supported video page to download its media.');
         }}
       >
         <Download className="w-6 h-6" />
