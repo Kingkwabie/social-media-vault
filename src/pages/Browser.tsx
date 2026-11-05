@@ -3,7 +3,6 @@ import {
   Search,
   Calculator,
   FileText,
-  FilePdf,
   BriefcaseBusiness,
   ArrowRight,
   Clock,
@@ -24,13 +23,11 @@ import {
   RefreshCw,
   ChevronRight,
   X,
-  Home,
-  Menu
+  ShieldCheck
 } from 'lucide-react';
 
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
 
 type Tool = {
   name: string;
@@ -72,7 +69,7 @@ const tools: Tool[] = [
   { name: 'Split PDF', description: 'Separate PDF pages.', category: 'PDF Tools', icon: Scissors },
   { name: 'Compress PDF', description: 'Reduce PDF file size.', category: 'PDF Tools', icon: Minimize2 },
   { name: 'PDF to Images', description: 'Convert PDF pages into images.', category: 'PDF Tools', icon: Image },
-  { name: 'Images to PDF', description: 'Turn images into a PDF document.', category: 'PDF Tools', icon: FilePdf },
+  { name: 'Images to PDF', description: 'Turn images into a PDF document.', category: 'PDF Tools', icon: FileText },
   { name: 'Rotate PDF', description: 'Rotate PDF pages.', category: 'PDF Tools', icon: RefreshCw },
   { name: 'Extract PDF Pages', description: 'Save selected PDF pages.', category: 'PDF Tools', icon: FilePlus },
   { name: 'Delete PDF Pages', description: 'Remove unwanted PDF pages.', category: 'PDF Tools', icon: X }
@@ -98,7 +95,7 @@ const categories = [
     short: 'PDF',
     count: 8,
     description: 'Manage and prepare your PDF files.',
-    icon: FilePdf
+    icon: FileText
   }
 ];
 
@@ -199,7 +196,7 @@ const Browser: React.FC = () => {
               variant="outline"
               onClick={() => setCategory('PDF Tools')}
             >
-              <FilePdf className="w-4 h-4 mr-2" />
+              <FileText className="w-4 h-4 mr-2" />
               PDF
             </Button>
           </div>
